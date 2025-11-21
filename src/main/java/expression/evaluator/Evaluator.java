@@ -1,6 +1,6 @@
 package expression.evaluator;
 
-import expression.parser.Node;
+import expression.ast.Node;
 
 public class Evaluator {
 
@@ -9,52 +9,52 @@ public class Evaluator {
     }
 
     private double evaluateTree(Node root) {
-        // leaf: just a value
-        if (root.left == null && root.right == null) {
-            return Double.parseDouble(root.value);
+        if (root instanceof Node.NumberNode numberNode) {
+            return numberNode.value();
         }
 
-        // unary operator: only right child is used
-        if (root.left == null) {
-            return root.value.equals("-")
-                    ? -evaluateTree(root.right)
-                    : evaluateTree(root.right);
+        if (root instanceof Node.UnaryNode unaryNode) {
+            return switch (unaryNode.operator()) {
+                case "-" -> -evaluateTree(unaryNode.operand());
+                case "+" -> evaluateTree(unaryNode.operand());
+                default -> throw new IllegalArgumentException("Unknown unary op: " + unaryNode.operator());
+            };
         }
 
-        // just in case (I'm aware that it's redundant)
-        if (root.right == null) {
-            throw new IllegalArgumentException("Illegal node - right == null: " + printTree(root));
+        if (root instanceof Node.BinaryNode binaryNode) {
+            return switch (binaryNode.operator()) {
+                case "+" -> evaluateTree(binaryNode.left()) + evaluateTree(binaryNode.right());
+                case "-" -> evaluateTree(binaryNode.left()) - evaluateTree(binaryNode.right());
+                case "*" -> evaluateTree(binaryNode.left()) * evaluateTree(binaryNode.right());
+                case "/" -> evaluateTree(binaryNode.left()) / evaluateTree(binaryNode.right());
+                default -> throw new IllegalArgumentException("Unknown binary op: " + binaryNode.operator());
+            };
         }
 
-        // full node
-        return switch (root.value) {
-            case "+" -> evaluateTree(root.left) + evaluateTree(root.right);
-            case "-" -> evaluateTree(root.left) - evaluateTree(root.right);
-            case "*" -> evaluateTree(root.left) * evaluateTree(root.right);
-            case "/" -> evaluateTree(root.left) / evaluateTree(root.right);
-            default -> throw new IllegalArgumentException("Unexpected operator in node: " + printTree(root));
-        };
+        throw new IllegalStateException("Unknown node: " + root);
     }
 
-    private String printTree(Node n) {
-        if (n == null) return "";
-
-        // leaf: just a value
-        if (n.left == null && n.right == null) {
-            return "(" + n.value + ")";
-        }
-
-        // unary operator: only right child is used
-        if (n.left == null) {
-            return "(" + n.value + " " + printTree(n.right) + ")";
-        }
-
-        // (на всякий случай) если когда-нибудь будет только левый ребёнок
-        if (n.right == null) {
-            return "(" + n.value + " " + printTree(n.left) + ")";
-        }
-
-        // binary operator
-        return "(" + n.value + " " + printTree(n.left) + " " + printTree(n.right) + ")";
-    }
+    // FIXME: Method got broken after introducing sealed interface Node
+    // It'not important as it will be completely re-written for pretty print soon.
+//    private String printTree(Node n) {
+//        if (n == null) return "";
+//
+//        // leaf: just a value
+//        if (n.left == null && n.right == null) {
+//            return "(" + n.value + ")";
+//        }
+//
+//        // unary operator: only right child is used
+//        if (n.left == null) {
+//            return "(" + n.value + " " + printTree(n.right) + ")";
+//        }
+//
+//        // (на всякий случай) если когда-нибудь будет только левый ребёнок
+//        if (n.right == null) {
+//            return "(" + n.value + " " + printTree(n.left) + ")";
+//        }
+//
+//        // binary operator
+//        return "(" + n.value + " " + printTree(n.left) + " " + printTree(n.right) + ")";
+//    }
 }

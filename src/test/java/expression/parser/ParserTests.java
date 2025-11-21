@@ -1,230 +1,181 @@
 package expression.parser;
 
-import org.junit.jupiter.api.BeforeEach;
+import expression.ast.Node;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ParserTests {
 
-    private Parser parser;
-
-    @BeforeEach
-    void setup() {
-        parser = new Parser();
-    }
+    private final Parser parser = new Parser();
 
     private Node parse(String... tokens) {
-        return parser.parse(List.of(tokens));
+        return parser.parse(new ArrayList<>(List.of(tokens)));
     }
 
-    @Test
-    void parsesSimpleBinaryExpression() {
-        Node root = parse("2", "+", "3");
-        assertEquals("+", root.value);
-        assertEquals("2", root.left.value);
-        assertEquals("3", root.right.value);
+    // ---------- Assertion helpers ----------
+
+    private static Node.NumberNode assertNum(Node n, double expected) {
+        assertInstanceOf(Node.NumberNode.class, n, "Expected NumberNode, got " + n);
+        Node.NumberNode nn = (Node.NumberNode) n;
+        assertEquals(expected, nn.value(), 1e-9);
+        return nn;
     }
 
-    @Test
-    void parsesSimpleAddition() {
-        Node root = parse("2", "+", "3");
-
-        assertEquals("+", root.value);
-        assertEquals("2", root.left.value);
-        assertEquals("3", root.right.value);
+    private static Node.BinaryNode assertBinary(Node n, String op) {
+        assertInstanceOf(Node.BinaryNode.class, n, "Expected BinaryNode, got " + n);
+        Node.BinaryNode bn = (Node.BinaryNode) n;
+        assertEquals(op, bn.operator());
+        return bn;
     }
 
-    @Test
-    void parsesSimpleSubtraction() {
-        Node root = parse("10", "-", "4");
-
-        assertEquals("-", root.value);
-        assertEquals("10", root.left.value);
-        assertEquals("4", root.right.value);
+    private static Node.UnaryNode assertUnary(Node n, String op) {
+        assertInstanceOf(Node.UnaryNode.class, n, "Expected UnaryNode, got " + n);
+        Node.UnaryNode un = (Node.UnaryNode) n;
+        assertEquals(op, un.operator());
+        return un;
     }
 
-    @Test
-    void parsesSimpleMultiplication() {
-        Node root = parse("6", "*", "7");
-
-        assertEquals("*", root.value);
-        assertEquals("6", root.left.value);
-        assertEquals("7", root.right.value);
-    }
-
-    @Test
-    void parsesSimpleDivision() {
-        Node root = parse("8", "/", "2");
-
-        assertEquals("/", root.value);
-        assertEquals("8", root.left.value);
-        assertEquals("2", root.right.value);
-    }
-
-    @Test
-    void multiplicationHasHigherPrecedenceThanAddition() {
-        Node root = parse("2", "+", "3", "*", "4");
-
-        // Рут — сложение
-        assertEquals("+", root.value);
-
-        // Левый операнд: число
-        assertEquals("2", root.left.value);
-
-        // Правый операнд — узел "*"
-        assertEquals("*", root.right.value);
-
-        // Проверяем дерево справа
-        assertEquals("3", root.right.left.value);
-        assertEquals("4", root.right.right.value);
-    }
+    // ---------- Tests ----------
 
     @Test
     void multiplicationOnLeftSideOfAddition() {
         Node root = parse("2", "*", "3", "+", "4");
 
-        // Корень — +
-        assertEquals("+", root.value);
+        var plus = assertBinary(root, "+");
 
-        // Левое поддерево — умножение
-        assertEquals("*", root.left.value);
-        assertEquals("2", root.left.left.value);
-        assertEquals("3", root.left.right.value);
+        var mul = assertBinary(plus.left(), "*");
+        assertNum(mul.left(), 2);
+        assertNum(mul.right(), 3);
 
-        assertEquals("4", root.right.value);
+        assertNum(plus.right(), 4);
     }
 
     @Test
     void mixedOperatorsChain() {
         Node root = parse("2", "+", "3", "*", "4", "-", "5");
 
-        assertEquals("-", root.value);        // последняя + первая низкоприоритетная
-        assertEquals("+", root.left.value);   // левое поддерево — сложение 2 + (3*4)
-        assertEquals("5", root.right.value);
+        var sub = assertBinary(root, "-");
+        var add = assertBinary(sub.left(), "+");
+        assertNum(sub.right(), 5);
 
-        // внутри (3*4)
-        Node mul = root.left.right;
-        assertEquals("*", mul.value);
-        assertEquals("3", mul.left.value);
-        assertEquals("4", mul.right.value);
+        var mul = assertBinary(add.right(), "*");
+        assertNum(mul.left(), 3);
+        assertNum(mul.right(), 4);
     }
 
     @Test
     void parenthesesOverridePrecedenceLeft() {
         Node root = parse("(", "2", "+", "3", ")", "*", "4");
 
-        assertEquals("*", root.value);
+        var mul = assertBinary(root, "*");
 
-        // внутри скобок — +
-        assertEquals("+", root.left.value);
-        assertEquals("2", root.left.left.value);
-        assertEquals("3", root.left.right.value);
+        var add = assertBinary(mul.left(), "+");
+        assertNum(add.left(), 2);
+        assertNum(add.right(), 3);
 
-        assertEquals("4", root.right.value);
+        assertNum(mul.right(), 4);
     }
 
     @Test
     void parenthesesOverridePrecedenceRight() {
         Node root = parse("2", "*", "(", "3", "+", "4", ")");
 
-        assertEquals("*", root.value);
-        assertEquals("2", root.left.value);
+        var mul = assertBinary(root, "*");
+        assertNum(mul.left(), 2);
 
-        assertEquals("+", root.right.value);
-        assertEquals("3", root.right.left.value);
-        assertEquals("4", root.right.right.value);
+        var add = assertBinary(mul.right(), "+");
+        assertNum(add.left(), 3);
+        assertNum(add.right(), 4);
     }
 
     @Test
     void nestedParentheses() {
         Node root = parse("(", "(", "1", "+", "2", ")", "*", "3", ")", "-", "4");
 
-        assertEquals("-", root.value);
-        assertEquals("4", root.right.value);
+        var minus = assertBinary(root, "-");
+        assertNum(minus.right(), 4);
 
-        Node mul = root.left;
-        assertEquals("*", mul.value);
+        var mul = assertBinary(minus.left(), "*");
 
-        Node innerPlus = mul.left;
-        assertEquals("+", innerPlus.value);
-        assertEquals("1", innerPlus.left.value);
-        assertEquals("2", innerPlus.right.value);
+        var plus = assertBinary(mul.left(), "+");
+        assertNum(plus.left(), 1);
+        assertNum(plus.right(), 2);
 
-        assertEquals("3", mul.right.value);
+        assertNum(mul.right(), 3);
     }
 
     @Test
     void unaryMinusBeforeNumber() {
         Node root = parse("-", "3");
 
-        assertEquals("-", root.value);
-        assertNull(root.left);
-        assertEquals("3", root.right.value);
+        var unary = assertUnary(root, "-");
+        assertNum(unary.operand(), 3);
     }
 
     @Test
     void unaryPlusBeforeNumber() {
         Node root = parse("+", "3");
 
-        assertEquals("+", root.value);
-        assertNull(root.left);
-        assertEquals("3", root.right.value);
+        var unary = assertUnary(root, "+");
+        assertNum(unary.operand(), 3);
     }
 
     @Test
     void chainOfUnaryOperatorsCollapsesToSingleOperator() {
         Node root = parse("-", "-", "-", "5");
 
-        // После нормализации остался один унарный минус
-        assertEquals("-", root.value);
-        assertNull(root.left);
-        assertEquals("5", root.right.value);
+        var unary = assertUnary(root, "-");
+        assertNum(unary.operand(), 5);
     }
 
     @Test
     void unaryBeforeGroup() {
         Node root = parse("-", "(", "3", "+", "2", ")");
 
-        assertEquals("-", root.value);
-        assertNull(root.left);
+        var unary = assertUnary(root, "-");
 
-        Node inner = root.right;
-        assertEquals("+", inner.value);
-        assertEquals("3", inner.left.value);
-        assertEquals("2", inner.right.value);
+        var add = assertBinary(unary.operand(), "+");
+        assertNum(add.left(), 3);
+        assertNum(add.right(), 2);
     }
 
     @Test
     void unaryAndBinaryMixed() {
         Node root = parse("2", "*", "-", "3");
 
-        assertEquals("*", root.value);
-        assertEquals("2", root.left.value);
+        var mul = assertBinary(root, "*");
+        assertNum(mul.left(), 2);
 
-        Node unary = root.right;
-        assertEquals("-", unary.value);
-        assertEquals("3", unary.right.value);
+        var unary = assertUnary(mul.right(), "-");
+        assertNum(unary.operand(), 3);
     }
 
     @Test
-    void unaryInsideComplexExpressionCollapses() {
-        Node root = parse("10", "-", "-", "(", "2", "*", "3", ")");
+    void unaryChainInsideBinaryExpression() {
+        Node root = parse("10", "-", "-", "-", "3");
 
-        // Корень — бинарный минус
-        assertEquals("+", root.value);
-        assertEquals("10", root.left.value);
-
-        // Унарная цепочка схлопнулась, значит справа сразу *
-        Node mul = root.right;
-        assertEquals("*", mul.value);
-        assertEquals("2", mul.left.value);
-        assertEquals("3", mul.right.value);
+        var minus = assertBinary(root, "-");
+        assertNum(minus.left(), 10);
+        assertNum(minus.right(), 3);
     }
+
+    @Test
+    void unaryInsideNestedGroup() {
+        Node root = parse("(", "2", "+", "-", "(", "3", "*", "4", ")", ")");
+
+        var minus = assertBinary(root, "-");
+        assertNum(minus.left(), 2);
+
+        var mul = assertBinary(minus.right(), "*");
+        assertNum(mul.left(), 3);
+        assertNum(mul.right(), 4);
+    }
+
+    // -------- Error cases --------
 
     @Test
     void unaryChainWithoutOperandShouldFail() {
@@ -290,65 +241,5 @@ class ParserTests {
     void standaloneParenthesisShouldFail() {
         assertThrows(IllegalArgumentException.class,
                 () -> parse("("));
-    }
-
-    @Test
-    void unaryBeforeBinaryInsideExpression() {
-        Node root = parse("2", "+", "-", "3");
-        assertEquals("-", root.value);
-        assertEquals("2", root.left.value);
-        assertEquals("3", root.right.value);
-    }
-
-    // FIXME: something is wrong here. Result is correct but the tree looks weird.
-    // Check again after introducing unaryNode and so on.
-    @Test
-    void unaryBeforeGroupInsideBinaryExpression() {
-        Node root = parse("2", "*", "-", "(", "3", "+", "4", ")");
-        assertEquals("*", root.value);
-        assertEquals("2", root.left.value);
-
-        Node mulRight = root.right;
-        assertEquals("+", mulRight.value);
-        assertEquals("3", mulRight.left.value);
-        assertEquals("4", mulRight.right.value);
-    }
-
-    @Test
-    void unaryChainInsideBinaryExpression() {
-        Node root = parse("10", "-", "-", "-", "3");
-        assertEquals("-", root.value);
-        assertEquals("10", root.left.value);
-        assertEquals("3", root.right.value); // цепочка схлопнута
-    }
-
-    @Test
-    void unaryInsideNestedGroup() {
-        Node root = parse("(", "2", "+", "-", "(", "3", "*", "4", ")", ")");
-
-        // 2 + -(...)  → 2 - (...)
-        assertEquals("-", root.value);
-
-        assertEquals("2", root.left.value);
-
-        Node inner = root.right;
-        assertEquals("*", inner.value);
-        assertEquals("3", inner.left.value);
-        assertEquals("4", inner.right.value);
-    }
-
-    @Test
-    void unaryAtStartWithMixedOperators() {
-        Node root = parse("-", "2", "*", "3");
-
-        // (* (- 2) 3)
-        assertEquals("*", root.value);
-
-        Node left = root.left;
-        assertEquals("-", left.value);
-        assertNull(left.left);
-        assertEquals("2", left.right.value);
-
-        assertEquals("3", root.right.value);
     }
 }

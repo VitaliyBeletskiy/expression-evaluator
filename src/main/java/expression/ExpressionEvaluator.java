@@ -1,7 +1,7 @@
 package expression;
 
 import expression.evaluator.Evaluator;
-import expression.parser.Node;
+import expression.ast.Node;
 import expression.parser.Parser;
 import expression.tokenizer.Tokenizer;
 

@@ -1,5 +1,7 @@
 package expression.parser;
 
+import expression.ast.Node;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -117,9 +119,8 @@ public class Parser {
         if (stripped.size() <= 3) return buildSimpleNode(stripped);
 
         if (stripped.get(0).matches("[+\\-]") && isExactlyOneOperandInParentheses(stripped.subList(1, stripped.size()))) {
-            return new Node(
+            return new Node.UnaryNode(
                     stripped.get(0),
-                    null,
                     buildTree(new ArrayList<>(stripped.subList(1, stripped.size())))
             );
         }
@@ -157,7 +158,7 @@ public class Parser {
         }
         Node left = buildTree(new ArrayList<>(stripped.subList(0, mainOpIndex)));
         Node right = buildTree(new ArrayList<>(stripped.subList(mainOpIndex + 1, stripped.size())));
-        return new Node(op, left, right);
+        return new Node.BinaryNode(op, left, right);
     }
 
     private Node buildSimpleNode(List<String> tokens) {
@@ -165,38 +166,34 @@ public class Parser {
         int size = tokens.size();
         return switch (size) {
             case 3 -> {
-                String left = tokens.get(0);
+                double leftOperand = Double.parseDouble(tokens.get(0));
                 String op = tokens.get(1);
-                String right = tokens.get(2);
+                double rightOperand = Double.parseDouble(tokens.get(2));
 
-                if (!isNumber(left) || isNotOperator(op) || !isNumber(right)) {
+                if (isNotOperator(op)) {
                     throw new IllegalArgumentException("Invalid simple expression structure (expected NUMBER OP NUMBER): " + tokens);
                 }
-                yield new Node(
+                yield new Node.BinaryNode(
                         op,
-                        new Node(left, null, null),
-                        new Node(right, null, null)
+                        new Node.NumberNode(leftOperand),
+                        new Node.NumberNode(rightOperand)
                 );
             }
             case 2 -> {
                 String op = tokens.get(0);
-                String num = tokens.get(1);
+                double num = Double.parseDouble(tokens.get(1));
 
-                if ((!op.equals("+") && !op.equals("-")) || !isNumber(num)) {
+                if (!op.equals("+") && !op.equals("-")) {
                     throw new IllegalArgumentException("Invalid simple expression structure (expected OP NUMBER): " + tokens);
                 }
-                yield new Node(
+                yield new Node.UnaryNode(
                         op,
-                        null,
-                        new Node(num, null, null)
+                        new Node.NumberNode(num)
                 );
             }
             case 1 -> {
-                String num = tokens.get(0);
-                if (!isNumber(num)) {
-                    throw new IllegalArgumentException("Invalid simple expression structure (expected NUMBER): " + tokens);
-                }
-                yield new Node(num, null, null);
+                double num = Double.parseDouble(tokens.get(0));
+                yield new Node.NumberNode(num);
             }
             default -> throw new IllegalArgumentException("Invalid simple expression structure: " + tokens);
         };
