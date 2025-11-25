@@ -40,76 +40,12 @@ public class Parser {
     }
 
     private Node parseTokens(final List<String> tokens) throws IllegalArgumentException {
-        // region Fail early validation
-        // Verify that the token list is not null or empty
+
         if (tokens == null || tokens.isEmpty()) {
             throw new IllegalArgumentException("Expression is empty or blank.");
         }
 
-        // The number of opening and closing parentheses must be equal
-        long openParensCount = tokens.stream().filter(x -> x.equals("(")).count();
-        long closeParensCount = tokens.stream().filter(x -> x.equals(")")).count();
-        if (openParensCount != closeParensCount) {
-            throw new IllegalArgumentException("Mismatched number of opening and closing parentheses.");
-        }
-
-        // Validate that the expression does NOT start and end with invalid tokens
-        String firstToken = tokens.get(0);
-        if (Set.of(")", "*", "/").contains(firstToken)) {
-            throw new IllegalArgumentException("Invalid first character: " + firstToken);
-        }
-        String lastToken = tokens.get(tokens.size() - 1);
-        if (Set.of("(", "+", "-", "*", "/").contains(lastToken)) {
-            throw new IllegalArgumentException("Invalid last character: " + lastToken);
-        }
-
-        // Check that two numeric tokens do not appear consecutively (e.g., "3 4" or "3.14 15")
-        boolean prevIsNumber = false;
-        for (String token : tokens) {
-            if (TokenPatterns.isNumber(token)) {
-                if (prevIsNumber) {
-                    throw new IllegalArgumentException("Two consecutive numbers detected near: " + token);
-                }
-                prevIsNumber = true;
-            } else {
-                prevIsNumber = false;
-            }
-        }
-
-        // Ensure that two binary operators do not appear consecutively (following unary is allowed)
-        boolean prevIsOperator = false;
-        for (String token : tokens) {
-            if ((token.equals("*") || token.equals("/")) && prevIsOperator) {
-                throw new IllegalArgumentException("Illegal operator combination near: " + token);
-            }
-            prevIsOperator = TokenPatterns.isOperator(token);
-        }
-
-        // Validate token adjacency rules to ensure syntactically correct expressions:
-        // 1. '(' must not be immediately followed by ')', '*' or '/' (e.g., "()" or "(*3)").
-        // 2. '(' must not be directly preceded by a number or ')' - prevents invalid sequences like "3(" or ")(".
-        // 3. ')' must not be immediately followed by a number — prevents invalid sequences like ")3" or ")(3)".
-        // 4. ')' must not directly follow an operator ('*', '/', '+', '-') — operators cannot end a subexpression.
-        Iterator<String> iterator = tokens.iterator();
-        String currentToken = iterator.next();
-        while (iterator.hasNext()) {
-            String nextToken = iterator.next();
-            if (currentToken.equals("(") && !canFollowOpeningParenthesis(nextToken)) {
-                throw new IllegalArgumentException("Invalid token sequence: ( followed by " + nextToken);
-            }
-            if ((currentToken.equals(")") || TokenPatterns.isNumber(currentToken)) && nextToken.equals("(")) {
-                throw new IllegalArgumentException("Invalid token sequence: " + currentToken + " followed by (.");
-            }
-            if (currentToken.equals(")") && TokenPatterns.isNumber(nextToken)) {
-                throw new IllegalArgumentException("Invalid token sequence: ) followed by " + nextToken);
-            }
-            if (TokenPatterns.isOperator(currentToken) && nextToken.equals(")")) {
-                throw new IllegalArgumentException("Invalid token sequence: " + currentToken + " followed by ).");
-            }
-
-            currentToken = nextToken;
-        }
-        // endregion Fail early validation
+        ParserRules.validate(tokens);
 
         return buildTree(tokens);
     }
@@ -202,9 +138,9 @@ public class Parser {
      * back-to-back; other tokens are left unchanged.
      * <p>
      * Examples:<br />
-     *   ["+", "+", "3"]      → ["+", "3"]<br />
-     *   ["-", "-", "5"]      → ["+", "5"]<br />
-     *   ["3", "+", "-", "2"] → ["3", "-", "2"]<br />
+     * ["+", "+", "3"]      → ["+", "3"]<br />
+     * ["-", "-", "5"]      → ["+", "5"]<br />
+     * ["3", "+", "-", "2"] → ["3", "-", "2"]<br />
      * <p>
      * Does not modify isolated '+' or '-' when they are not part of a chain.
      */
@@ -247,10 +183,10 @@ public class Parser {
      * odd number becomes '-'. Assumes input contains only '+' or '-' characters.
      * <p>
      * Examples:
-     *   "+"      → "+"
-     *   "--"     → "+"
-     *   "---"    → "-"
-     *   "+-+-"   → "+"
+     * "+"      → "+"
+     * "--"     → "+"
+     * "---"    → "-"
+     * "+-+-"   → "+"
      *
      * @param unaryChain sequence of '+' and '-' characters
      * @return a single '+' or '-'
@@ -270,7 +206,7 @@ public class Parser {
      * top-level pair of parentheses, with no extra tokens outside the outermost
      * brackets.
      * Example: (3+2) (5) (3+5+6+7) ((3+2)*4) (3) → true,
-     *          (3)+2 (4+5)*(4-6) → false.
+     * (3)+2 (4+5)*(4-6) → false.
      */
     private boolean isWrappedBySingleOuterParens(List<String> tokens) {
         if (tokens.isEmpty()) return false;
@@ -298,13 +234,5 @@ public class Parser {
         return TokenPatterns.isNumber(token) || token.equals(")");
     }
 
-    /**
-     * Returns true if the token is allowed immediately after an opening parenthesis.
-     * Valid options: another '(', a unary operator, or a number.
-     */
-    private boolean canFollowOpeningParenthesis(String token) {
-        return TokenPatterns.isNumber(token)
-                || TokenPatterns.isUnaryOperator(token)
-                || "(".equals(token);
-    }
+
 }
