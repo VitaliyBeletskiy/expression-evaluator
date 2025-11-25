@@ -66,7 +66,7 @@ public class Parser {
         // Check that two numeric tokens do not appear consecutively (e.g., "3 4" or "3.14 15")
         boolean prevIsNumber = false;
         for (String token : tokens) {
-            if (token.matches("[\\d.]+")) {
+            if (TokenPatterns.isNumber(token)) {
                 if (prevIsNumber) {
                     throw new IllegalArgumentException("Two consecutive numbers detected near: " + token);
                 }
@@ -82,28 +82,28 @@ public class Parser {
             if ((token.equals("*") || token.equals("/")) && prevIsOperator) {
                 throw new IllegalArgumentException("Illegal operator combination near: " + token);
             }
-            prevIsOperator = token.matches("[*/+\\-]");
+            prevIsOperator = TokenPatterns.isOperator(token);
         }
 
         // Validate token adjacency rules to ensure syntactically correct expressions:
         // 1. '(' must not be immediately followed by ')', '*' or '/' (e.g., "()" or "(*3)").
         // 2. '(' must not be directly preceded by a number or ')' - prevents invalid sequences like "3(" or ")(".
-        // 3. ')' must not directly follow an operator ('*', '/', '+', '-') — operators cannot end a subexpression.
-        // 4. ')' must not be immediately followed by a number — prevents invalid sequences like ")3" or ")(3)".
+        // 3. ')' must not be immediately followed by a number — prevents invalid sequences like ")3" or ")(3)".
+        // 4. ')' must not directly follow an operator ('*', '/', '+', '-') — operators cannot end a subexpression.
         Iterator<String> iterator = tokens.iterator();
         String currentToken = iterator.next();
         while (iterator.hasNext()) {
             String nextToken = iterator.next();
-            if (currentToken.equals("(") && nextToken.matches("[)*/]")) {
+            if (currentToken.equals("(") && !canFollowOpeningParenthesis(nextToken)) {
                 throw new IllegalArgumentException("Invalid token sequence: ( followed by " + nextToken);
             }
-            if (nextToken.equals("(") && (currentToken.equals(")") || isNumber(currentToken))) {
+            if ((currentToken.equals(")") || TokenPatterns.isNumber(currentToken)) && nextToken.equals("(")) {
                 throw new IllegalArgumentException("Invalid token sequence: " + currentToken + " followed by (.");
             }
-            if (currentToken.equals(")") && nextToken.matches("\\d+(\\.\\d+)?")) {
+            if (currentToken.equals(")") && TokenPatterns.isNumber(nextToken)) {
                 throw new IllegalArgumentException("Invalid token sequence: ) followed by " + nextToken);
             }
-            if (nextToken.equals(")") && currentToken.matches("[*/+\\-]")) {
+            if (TokenPatterns.isOperator(currentToken) && nextToken.equals(")")) {
                 throw new IllegalArgumentException("Invalid token sequence: " + currentToken + " followed by ).");
             }
 
@@ -118,7 +118,7 @@ public class Parser {
         List<String> stripped = stripOuterParentheses(tokens);
         if (stripped.size() <= 3) return buildSimpleNode(stripped);
 
-        if (stripped.get(0).matches("[+\\-]") && isExactlyOneOperandInParentheses(stripped.subList(1, stripped.size()))) {
+        if (TokenPatterns.isUnaryOperator(stripped.get(0)) && isWrappedBySingleOuterParens(stripped.subList(1, stripped.size()))) {
             return new Node.UnaryNode(
                     stripped.get(0),
                     buildTree(new ArrayList<>(stripped.subList(1, stripped.size())))
@@ -128,22 +128,19 @@ public class Parser {
         /* Here we are looking for the main operator that divides entire expression:
          *  <left expression> <main operator> <right expression> */
         int mainOpIndex = -1;
-        int level = 0;
+        int operatorLevel = 0;
         for (int i = stripped.size() - 1; i >= 0; i--) {
             String token = stripped.get(i);
             if (token.equals(")")) {
-                level++;
+                operatorLevel++;
             } else if (token.equals("(")) {
-                level--;
+                operatorLevel--;
             }
-            if (level == 0 && token.matches("[+\\-]")) {
-                // Check if the operator is NOT unary
-                if (i > 0 && isOperandEnd(stripped.get(i - 1))) {
-                    mainOpIndex = i;
-                    break;
-                }
+            if (operatorLevel == 0 && TokenPatterns.isUnaryOperator(token) && i > 0 && isOperandEnd(stripped.get(i - 1))) {
+                mainOpIndex = i;
+                break;
             }
-            if (level == 0 && mainOpIndex < 0 && token.matches("[*/]")) {
+            if (operatorLevel == 0 && mainOpIndex < 0 && TokenPatterns.isMultiplicativeOperator(token)) {
                 mainOpIndex = i;
             }
         }
@@ -153,7 +150,7 @@ public class Parser {
 
         String op = stripped.get(mainOpIndex);
         // full node - value must be an operator
-        if (isNotOperator(op)) {
+        if (!TokenPatterns.isOperator(op)) {
             throw new IllegalStateException("Parser error: expected operator but found: " + op);
         }
         Node left = buildTree(new ArrayList<>(stripped.subList(0, mainOpIndex)));
@@ -170,7 +167,7 @@ public class Parser {
                 String op = tokens.get(1);
                 double rightOperand = Double.parseDouble(tokens.get(2));
 
-                if (isNotOperator(op)) {
+                if (!TokenPatterns.isOperator(op)) {
                     throw new IllegalArgumentException("Invalid simple expression structure (expected NUMBER OP NUMBER): " + tokens);
                 }
                 yield new Node.BinaryNode(
@@ -199,14 +196,24 @@ public class Parser {
         };
     }
 
-    // Replace consecutive unary '+' and '-' operators with a single normalized sign
+    /**
+     * Normalizes sequences of consecutive unary '+' and '-' operators by collapsing
+     * them into a single effective sign. Only applies when unary operators appear
+     * back-to-back; other tokens are left unchanged.
+     * <p>
+     * Examples:<br />
+     *   ["+", "+", "3"]      → ["+", "3"]<br />
+     *   ["-", "-", "5"]      → ["+", "5"]<br />
+     *   ["3", "+", "-", "2"] → ["3", "-", "2"]<br />
+     * <p>
+     * Does not modify isolated '+' or '-' when they are not part of a chain.
+     */
     private List<String> normalizeUnaryChains(final List<String> tokens) {
         List<String> output = new ArrayList<>();
 
-        Set<String> unary = Set.of("+", "-");
         StringBuilder unaryChain = new StringBuilder();
         for (String token : tokens) {
-            if (unary.contains(token)) {
+            if (TokenPatterns.isUnaryOperator(token)) {
                 unaryChain.append(token);
             } else {
                 if (!unaryChain.isEmpty()) {
@@ -222,11 +229,11 @@ public class Parser {
         return output;
     }
 
-    // Helper method: Removes outermost parentheses if they fully wrap the expression. Example: "((3+2))" → "3+2"
+    // Removes outermost parentheses if they fully wrap the expression. Example: "((3+2))" → "3+2"
     private List<String> stripOuterParentheses(List<String> tokens) {
         if (tokens.size() < 2) return tokens;
 
-        if (isExactlyOneOperandInParentheses(tokens)) {
+        if (isWrappedBySingleOuterParens(tokens)) {
             List<String> inner = new ArrayList<>(tokens.subList(1, tokens.size() - 1));
             return stripOuterParentheses(inner);
         } else {
@@ -234,9 +241,23 @@ public class Parser {
         }
     }
 
-    // Helper method
+    /**
+     * Reduces a sequence of unary '+' and '-' operators into a single effective
+     * unary operator. A chain with an even number of '-' becomes '+', while an
+     * odd number becomes '-'. Assumes input contains only '+' or '-' characters.
+     * <p>
+     * Examples:
+     *   "+"      → "+"
+     *   "--"     → "+"
+     *   "---"    → "-"
+     *   "+-+-"   → "+"
+     *
+     * @param unaryChain sequence of '+' and '-' characters
+     * @return a single '+' or '-'
+     * @throws IllegalArgumentException if the input contains non-unary characters
+     */
     private String reduceUnaryChain(final String unaryChain) {
-        if (!unaryChain.matches("[+\\-]+")) {
+        if (!TokenPatterns.isUnaryChain(unaryChain)) {
             throw new IllegalArgumentException("Unary chain must contain only '+' or '-' characters.");
         }
         long minusCount = unaryChain.chars().filter(c -> c == '-').count();
@@ -244,39 +265,46 @@ public class Parser {
         return String.valueOf(result);
     }
 
-    // region Token predicates
-    // Token predicate: checks if the given tokens are actually one operand wrapped with parentheses.
-    private boolean isExactlyOneOperandInParentheses(List<String> tokens) {
+    /**
+     * Returns true if the entire token sequence is enclosed in a single
+     * top-level pair of parentheses, with no extra tokens outside the outermost
+     * brackets.
+     * Example: (3+2) (5) (3+5+6+7) ((3+2)*4) (3) → true,
+     *          (3)+2 (4+5)*(4-6) → false.
+     */
+    private boolean isWrappedBySingleOuterParens(List<String> tokens) {
         if (tokens.isEmpty()) return false;
         if (!tokens.get(0).equals("(")) return false;
         if (!tokens.get(tokens.size() - 1).equals(")")) return false;
 
         int depth = 0;
-        for (int i = 0; i < tokens.size(); i++) {
+        for (int i = 0; i < tokens.size() - 1; i++) {
             String token = tokens.get(i);
 
             if (token.equals("(")) depth++;
-            if (token.equals(")")) depth--;
+            else if (token.equals(")")) depth--;
 
-            if (depth == 0 && i != tokens.size() - 1) return false;
+            if (depth == 0) return false;
         }
 
         return true;
     }
 
-    // Token predicate: checks if the token is a number
-    private boolean isNumber(String value) {
-        return value.matches("\\d+(\\.\\d+)?");
-    }
-
-    // Token predicate: checks if the token is an operator
-    private boolean isNotOperator(String value) {
-        return !value.matches("[*/+\\-]");
-    }
-
-    // Token predicate: checks if the given token represents the *end* of an operand.
+    /**
+     * Returns true if the token can legally terminate an operand in an expression.
+     * Valid endings are numbers or closing parentheses.
+     */
     private boolean isOperandEnd(String token) {
-        return isNumber(token) || token.equals(")");
+        return TokenPatterns.isNumber(token) || token.equals(")");
     }
-    // endregion
+
+    /**
+     * Returns true if the token is allowed immediately after an opening parenthesis.
+     * Valid options: another '(', a unary operator, or a number.
+     */
+    private boolean canFollowOpeningParenthesis(String token) {
+        return TokenPatterns.isNumber(token)
+                || TokenPatterns.isUnaryOperator(token)
+                || "(".equals(token);
+    }
 }
