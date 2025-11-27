@@ -1,6 +1,7 @@
 package expression.evaluator;
 
 import expression.ast.Node;
+import expression.ast.operator.Operator;
 
 public class Evaluator {
 
@@ -14,24 +15,19 @@ public class Evaluator {
         }
 
         if (root instanceof Node.UnaryNode unaryNode) {
-            return switch (unaryNode.operator()) {
-                case "-" -> -evaluateTree(unaryNode.operand());
-                case "+" -> evaluateTree(unaryNode.operand());
-                default -> throw new IllegalArgumentException("Unknown unary op: " + unaryNode.operator());
-            };
+            Operator op = unaryNode.operator();
+            double value = evaluateTree(unaryNode.operand());
+            return op.apply(value);
         }
 
         if (root instanceof Node.BinaryNode binaryNode) {
-            return switch (binaryNode.operator()) {
-                case "+" -> evaluateTree(binaryNode.left()) + evaluateTree(binaryNode.right());
-                case "-" -> evaluateTree(binaryNode.left()) - evaluateTree(binaryNode.right());
-                case "*" -> evaluateTree(binaryNode.left()) * evaluateTree(binaryNode.right());
-                case "/" -> evaluateTree(binaryNode.left()) / evaluateTree(binaryNode.right());
-                default -> throw new IllegalArgumentException("Unknown binary op: " + binaryNode.operator());
-            };
+            Operator op = binaryNode.operator();
+            double leftOperand = evaluateTree(binaryNode.left());
+            double rightOperand = evaluateTree(binaryNode.right());
+            return op.apply(leftOperand, rightOperand);
         }
 
-        throw new IllegalStateException("Unknown node: " + root);
+        throw new IllegalStateException("Unsupported AST node type: " + root.getClass());
     }
 
     // FIXME: Method got broken after introducing sealed interface Node

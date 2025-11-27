@@ -1,11 +1,10 @@
 package expression.parser;
 
 import expression.ast.Node;
+import expression.ast.operator.OperatorFactory;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Builds an Abstract Syntax Tree (AST) from a list of tokens.
@@ -56,7 +55,7 @@ public class Parser {
 
         if (TokenPatterns.isUnaryOperator(stripped.get(0)) && isWrappedBySingleOuterParens(stripped.subList(1, stripped.size()))) {
             return new Node.UnaryNode(
-                    stripped.get(0),
+                    OperatorFactory.fromSymbol(stripped.get(0), 1),
                     buildTree(new ArrayList<>(stripped.subList(1, stripped.size())))
             );
         }
@@ -91,7 +90,11 @@ public class Parser {
         }
         Node left = buildTree(new ArrayList<>(stripped.subList(0, mainOpIndex)));
         Node right = buildTree(new ArrayList<>(stripped.subList(mainOpIndex + 1, stripped.size())));
-        return new Node.BinaryNode(op, left, right);
+        return new Node.BinaryNode(
+                OperatorFactory.fromSymbol(op, 2),
+                left,
+                right
+        );
     }
 
     private Node buildSimpleNode(List<String> tokens) {
@@ -107,7 +110,7 @@ public class Parser {
                     throw new IllegalArgumentException("Invalid simple expression structure (expected NUMBER OP NUMBER): " + tokens);
                 }
                 yield new Node.BinaryNode(
-                        op,
+                        OperatorFactory.fromSymbol(op, 2),
                         new Node.NumberNode(leftOperand),
                         new Node.NumberNode(rightOperand)
                 );
@@ -120,7 +123,7 @@ public class Parser {
                     throw new IllegalArgumentException("Invalid simple expression structure (expected OP NUMBER): " + tokens);
                 }
                 yield new Node.UnaryNode(
-                        op,
+                        OperatorFactory.fromSymbol(op, 1),
                         new Node.NumberNode(num)
                 );
             }
@@ -233,6 +236,4 @@ public class Parser {
     private boolean isOperandEnd(String token) {
         return TokenPatterns.isNumber(token) || token.equals(")");
     }
-
-
 }
